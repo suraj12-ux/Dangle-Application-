@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dangle</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:transparent}
+  canvas{position:fixed;inset:0;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<script>
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const nimbuMirchi = new Image();
+nimbuMirchi.src = 'nimbu-mirchi-v3.png';
+const SEG = 22;
+// Anchor the rope at the physical top of the display; macOS draws its menu bar above it.
+const THREAD_ORIGIN_Y = 0;
+
+let W = 0, H = 0, restLen = 10;
+let gravity = 0.55, damp = 0.98;
+// Start with the Nimbu Mirchi charm so the requested design is visible immediately.
+let critter = 'nimbu-mirchi';
+let pts = [], anchor = { x: 0, y: THREAD_ORIGIN_Y };
+let grab = null, blink = 0, t = 0, wasOver = false;
+
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  anchor.x = Math.min(Math.max(anchor.x || W * 0.84, 40), W - 40);
+}
+
+function build(){
+  restLen = 220 / (SEG - 1);
+  pts = [];
+  for (let i = 0; i < SEG; i++){
+    const x = anchor.x, y = anchor.y + i * restLen;
+    pts.push({ x, y, px: x, py: y });
+  }
+  pts[SEG - 1].px -= 26;
+}
+
+/* ---------- physics ---------- */
+function step(){
+  const last = pts.length - 1;
+  if (grab){
+    const p = pts[last];
+    p.px = p.x; p.py = p.y;
+    p.x = grab.x; p.y = grab.y;
+  }
+  for (let i = 1; i < pts.length; i++){
+    if (grab && i === last) continue;
+    const p = pts[i];
+    const vx = (p.x - p.px) * damp, vy = (p.y - p.py) * damp;
+    p.px = p.x; p.py = p.y;
+    p.x += vx; p.y += vy + gravity * (i === last ? 1.6 : 1);
+  }
+  for (let k = 0; k < 14; k++) solve();
+}
+function solve(){
+  const last = pts.length - 1;
+  for (let i = 0; i < pts.length - 1; i++){
+    const a = pts[i], b = pts[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.hypot(dx, dy) || 1e-4;
+    const f = ((d - restLen) / d) * 0.5;
+    const ox = dx * f, oy = dy * f;
+    const aFix = i === 0, bFix = grab && i + 1 === last;
+    if (aFix && bFix) continue;
+    if (aFix){ b.x -= ox * 2; b.y -= oy * 2; }
+    else if (bFix){ a.x += ox * 2; a.y += oy * 2; }
+    else { a.x += ox; a.y += oy; b.x -= ox; b.y -= oy; }
+  }
+  pts[0].x = anchor.x; pts[0].y = anchor.y;
+}
+
+/* ---------- drawing ---------- */
+function drawCord(){
+  const gold = ctx.createLinearGradient(0, pts[0].y, 0, pts[pts.length - 1].y);
+  gold.addColorStop(0, '#8d5a08');
+  gold.addColorStop(.28, '#ffd86b');
+  gold.addColorStop(.52, '#eab33a');
+  gold.addColorStop(1, '#7b4b05');
+  ctx.strokeStyle = gold; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++){
+    const mx = (pts[i].x + pts[i+1].x) / 2, my = (pts[i].y + pts[i+1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  ctx.lineWidth = 3; ctx.stroke();
+}
+function blob(x, y, rx, ry, fill){
+  ctx.fillStyle = fill; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fill();
+}
+function eyes(vx, look){
+  const dx = Math.max(-2.4, Math.min(2.4, vx * 0.22));
+  const open = blink > 0 ? 0.12 : 1;
+  for (const s of [-1, 1]){
+    ctx.fillStyle = '#2c2233';
+    ctx.beginPath(); ctx.ellipse(s * look, 0, 2.9, 3.6 * open, 0, 0, 7); ctx.fill();
+    if (open > .5){
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.beginPath(); ctx.arc(s * look + dx + 1, -1.3, 1.1, 0, 7); ctx.fill();
+    }
+  }
+}
+function drawCat(vx, wob){
+  ctx.strokeStyle = '#e29245'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(6, 62); ctx.quadraticCurveTo(30 + wob*8, 66, 24 + wob*12, 40); ctx.stroke();
+  blob(-9, 66 + wob*2, 7, 12, '#e29245'); blob(9, 66 - wob*2, 7, 12, '#e29245');
+  blob(0, 48, 19, 24, '#f0a04b'); blob(0, 52, 11, 16, '#ffe2bd');
+  ctx.strokeStyle = '#f0a04b'; ctx.lineWidth = 9;
+  ctx.beginPath(); ctx.moveTo(-8, 30); ctx.lineTo(-4, 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, 30); ctx.lineTo(4, 2); ctx.stroke();
+  ctx.fillStyle = '#f0a04b';
+  ctx.beginPath(); ctx.moveTo(-17,18); ctx.lineTo(-13,0); ctx.lineTo(-3,12); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(17,18); ctx.lineTo(13,0); ctx.lineTo(3,12); ctx.fill();
+  blob(0, 22, 18, 15.5, '#f0a04b'); blob(0, 27, 9, 7, '#ffe2bd');
+  ctx.save(); ctx.translate(0, 21); eyes(vx, 7); ctx.restore();
+  ctx.fillStyle = '#d2687a';
+  ctx.beginPath(); ctx.moveTo(-2.4,26); ctx.lineTo(2.4,26); ctx.lineTo(0,28.6); ctx.fill();
+  ctx.strokeStyle = 'rgba(60,40,30,.35)'; ctx.lineWidth = 1;
+  for (const s of [-1, 1]){
+    ctx.beginPath(); ctx.moveTo(s*9, 25); ctx.lineTo(s*22, 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s*9, 28); ctx.lineTo(s*22, 30); ctx.stroke();
+  }
+}
+function drawSloth(vx, wob){
+  ctx.strokeStyle = '#9b8a72'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-9,34); ctx.lineTo(-5,2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(9,34); ctx.lineTo(5,2); ctx.stroke();
+  blob(-10, 70 + wob*3, 8, 13, '#8b7a63'); blob(10, 70 - wob*3, 8, 13, '#8b7a63');
+  blob(0, 50, 21, 26, '#9b8a72'); blob(0, 54, 12, 17, '#c7b79c');
+  blob(0, 22, 18, 16, '#c7b79c'); blob(-7, 21, 8, 7.5, '#6f5f4d'); blob(7, 21, 8, 7.5, '#6f5f4d');
+  ctx.save(); ctx.translate(0, 21); eyes(vx, 7); ctx.restore();
+  blob(0, 28, 4, 3, '#4a3d31');
+  ctx.strokeStyle = '#4a3d31'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.arc(0, 29, 5, 0.25, Math.PI - 0.25); ctx.stroke();
+}
+function drawGhost(vx, wob){
+  ctx.save();
+  ctx.shadowColor = 'rgba(190,220,255,.55)'; ctx.shadowBlur = 22;
+  ctx.fillStyle = 'rgba(234,242,255,.93)';
+  ctx.beginPath(); ctx.arc(0, 26, 20, Math.PI, 0); ctx.lineTo(20, 58);
+  for (let i = 0; i < 4; i++){
+    const x0 = 20 - i*10, x1 = x0 - 10;
+    ctx.quadraticCurveTo((x0+x1)/2, 58 + (i%2 ? -10 : 12) + wob*4, x1, 58);
+  }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(0, 24); eyes(vx, 7.5); ctx.restore();
+  blob(0, 34, 3.4, 4.2, '#2c2233');
+  blob(-13, 30, 4, 2.6, 'rgba(255,160,190,.5)');
+  blob(13, 30, 4, 2.6, 'rgba(255,160,190,.5)');
+}
+function drawDrishti(_vx, wob){
+  // A compact, friendly homage to the protective South Indian hanging-mask motif.
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  // Curved black horns and their gold tips.
+  ctx.strokeStyle = '#17151a'; ctx.lineWidth = 13;
+  ctx.beginPath(); ctx.moveTo(-10, 25); ctx.quadraticCurveTo(-35, 37, -39, 13 + wob*2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, 25); ctx.quadraticCurveTo(35, 37, 39, 13 - wob*2); ctx.stroke();
+  ctx.strokeStyle = '#f5bf27'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(-39, 13 + wob*2); ctx.quadraticCurveTo(-40, 7, -36, 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(39, 13 - wob*2); ctx.quadraticCurveTo(40, 7, 36, 4); ctx.stroke();
+
+  // Gold sun disk at the rope attachment.
+  ctx.fillStyle = '#f5c226'; ctx.beginPath(); ctx.arc(0, 14, 16, 0, 7); ctx.fill();
+  ctx.fillStyle = '#d32226'; ctx.beginPath(); ctx.arc(0, 14, 9, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#4a1718'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Mask silhouette.
+  ctx.fillStyle = '#161519'; ctx.beginPath();
+  ctx.moveTo(-28, 29); ctx.quadraticCurveTo(-35, 49, -23, 69);
+  ctx.quadraticCurveTo(0, 83, 23, 69); ctx.quadraticCurveTo(35, 49, 28, 29);
+  ctx.quadraticCurveTo(0, 19, -28, 29); ctx.fill();
+  ctx.strokeStyle = '#d8a920'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Dramatic white eyes and red pupils.
+  for (const s of [-1, 1]){
+    ctx.fillStyle = '#f7f2e9'; ctx.beginPath(); ctx.ellipse(s*14, 41, 13, 8, s*0.18, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#bc1d28'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#d5232b'; ctx.beginPath(); ctx.arc(s*14, 41, 5.2, 0, 7); ctx.fill();
+    ctx.fillStyle = '#3a1013'; ctx.beginPath(); ctx.arc(s*14, 41, 2.1, 0, 7); ctx.fill();
+  }
+
+  // Nose, moustache, teeth and tongue.
+  ctx.fillStyle = '#28252a'; ctx.beginPath(); ctx.moveTo(0, 42); ctx.lineTo(-5, 56); ctx.lineTo(0, 59); ctx.lineTo(5, 56); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#e9e4db'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-15, 59); ctx.quadraticCurveTo(-6, 64, 0, 59); ctx.quadraticCurveTo(6, 64, 15, 59); ctx.stroke();
+  ctx.strokeStyle = '#08080a'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-3, 58); ctx.quadraticCurveTo(-14, 66, -23, 59); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(3, 58); ctx.quadraticCurveTo(14, 66, 23, 59); ctx.stroke();
+  ctx.fillStyle = '#d7262d'; ctx.beginPath(); ctx.ellipse(0, 69, 6, 12, 0, 0, 7); ctx.fill();
+
+  // Small gold cheek ornaments.
+  for (const s of [-1, 1]){
+    ctx.fillStyle = '#e7b623'; ctx.beginPath(); ctx.arc(s*29, 60, 7, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#5e4314'; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+}
+function drawBlueEye(_vx, wob){
+  // A glossy nazar-style blue-eye charm, with its loop resting on the rope.
+  const cy = 40 + wob * 1.5;
+  ctx.shadowColor = 'rgba(22,86,220,.36)'; ctx.shadowBlur = 11;
+  const outer = ctx.createRadialGradient(-10, cy - 13, 4, 0, cy, 37);
+  outer.addColorStop(0, '#4a8dff'); outer.addColorStop(.42, '#104dc9'); outer.addColorStop(1, '#061d79');
+  ctx.fillStyle = outer; ctx.beginPath(); ctx.arc(0, cy, 35, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#06175d'; ctx.lineWidth = 3; ctx.stroke();
+
+  // The cord passes through a small gold-rimmed hole at the top of the charm.
+  ctx.fillStyle = '#f3cc43'; ctx.beginPath(); ctx.arc(0, cy - 30, 5.5, 0, 7); ctx.fill();
+  ctx.fillStyle = '#142254'; ctx.beginPath(); ctx.arc(0, cy - 30, 2.6, 0, 7); ctx.fill();
+
+  ctx.fillStyle = '#f5f3ec'; ctx.beginPath(); ctx.arc(0, cy, 24, 0, 7); ctx.fill();
+  ctx.fillStyle = '#35b6d1'; ctx.beginPath(); ctx.arc(0, cy, 14, 0, 7); ctx.fill();
+  ctx.fillStyle = '#11131a'; ctx.beginPath(); ctx.arc(0, cy, 7.5, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.beginPath(); ctx.arc(-3, cy - 3, 2.5, 0, 7); ctx.fill();
+
+  // A restrained reflection on the blue glass.
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(-8, cy - 8, 23, Math.PI * 1.08, Math.PI * 1.55); ctx.stroke();
+}
+function drawNimbuMirchi(){
+  if (!nimbuMirchi.complete || !nimbuMirchi.naturalWidth) return;
+  // This keeps the original Nimbu Mirchi design while the physics rope is its only thread.
+  ctx.drawImage(nimbuMirchi, 0, 100, 1086, 1348, -44, -17, 88, 109);
+}
+function drawDaruma(_vx, wob){
+  const cy = 46 + wob * 1.2;
+  // The short gold stem and white-and-gold beads from the hanging reference.
+  ctx.strokeStyle = '#c79022'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 19); ctx.stroke();
+  const bead = (y, r, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(0, y, r, 0, 7); ctx.fill(); };
+  bead(6, 7, '#f3bd2d'); bead(17, 11, '#f6f5f2'); bead(29, 7, '#efb625');
+
+  // Full, lacquered red doll body with a bright rim.
+  const red = ctx.createRadialGradient(-11, cy - 20, 3, 0, cy, 39);
+  red.addColorStop(0, '#ff7761'); red.addColorStop(.36, '#ef1621'); red.addColorStop(.78, '#b60d18'); red.addColorStop(1, '#710c15');
+  ctx.fillStyle = red; ctx.beginPath(); ctx.ellipse(0, cy, 35, 38, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#ff5a4f'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(-8, cy - 9, 29, Math.PI * 1.12, Math.PI * 1.58); ctx.stroke();
+
+  // Large ivory face, with the open orange-rimmed eyes from the reference.
+  ctx.fillStyle = '#fbf5e9'; ctx.beginPath(); ctx.ellipse(0, cy - 8, 27, 22, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#b4161c'; ctx.lineWidth = 2.5; ctx.stroke();
+  for (const s of [-1, 1]){
+    ctx.fillStyle = '#fffdf7'; ctx.beginPath(); ctx.arc(s*11, cy - 8, 8.2, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#e55a19'; ctx.lineWidth = 3; ctx.stroke();
+  }
+
+  // Black sweeping eyebrows and lower moustache curls.
+  ctx.strokeStyle = '#191719'; ctx.lineWidth = 4.8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-24, cy - 16); ctx.quadraticCurveTo(-15, cy - 27, -5, cy - 17); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(24, cy - 16); ctx.quadraticCurveTo(15, cy - 27, 5, cy - 17); ctx.stroke();
+  ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.moveTo(-23, cy - 1); ctx.quadraticCurveTo(-15, cy + 8, -6, cy + 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(23, cy - 1); ctx.quadraticCurveTo(15, cy + 8, 6, cy + 2); ctx.stroke();
+  ctx.strokeStyle = '#d93f31'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(0, cy - 2); ctx.quadraticCurveTo(-5, cy + 3, -5, cy + 7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-8, cy + 10); ctx.quadraticCurveTo(0, cy + 14, 8, cy + 10); ctx.stroke();
+
+  // Gold lower panel, stripes, and good-fortune character.
+  ctx.fillStyle = 'rgba(113,11,18,.45)'; ctx.beginPath(); ctx.ellipse(0, cy + 22, 29, 13, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#f3c22b'; ctx.lineWidth = 4;
+  for (const x of [-23, -15, 15, 23]){ ctx.beginPath(); ctx.moveTo(x, cy + 17); ctx.lineTo(x * .83, cy + 31); ctx.stroke(); }
+  ctx.fillStyle = '#f5c52e'; ctx.font = 'bold 21px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('福', 0, cy + 23);
+  ctx.fillStyle = '#a10d16'; ctx.beginPath(); ctx.ellipse(0, cy + 37, 22, 3.5, 0, 0, 7); ctx.fill();
+}
+function drawCritter(){
+  const n = pts.length - 1, a = pts[n-1], b = pts[n];
+  const angle = Math.atan2(b.y - a.y, b.x - a.x) - Math.PI/2;
+  const vx = b.x - b.px, wob = Math.sin(t/22)*0.5 + vx*0.05;
+  ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(angle);
+  if (critter === 'cat') drawCat(vx, wob);
+  else if (critter === 'sloth') drawSloth(vx, wob);
+  else if (critter === 'ghost') drawGhost(vx, wob);
+  else if (critter === 'blue-eye') drawBlueEye(vx, wob);
+  else if (critter === 'nimbu-mirchi') drawNimbuMirchi();
+  else drawGhost(vx, wob);
+  ctx.restore();
+}
+
+function loop(){
+  t++;
+  if (blink > 0) blink--; else if (Math.random() < 0.004) blink = 9;
+  step();
+  ctx.clearRect(0, 0, W, H);
+  drawCord(); drawCritter();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- hit region: the whole point of the click-through trick ---------- */
+function overCritter(x, y){
+  const b = pts[pts.length - 1];
+  return Math.hypot(x - b.x, y - (b.y + 42)) < ((critter === 'blue-eye' || critter === 'nimbu-mirchi') ? 74 : 62);
+}
+addEventListener('mousemove', e => {
+  const over = grab ? true : overCritter(e.clientX, e.clientY);
+  if (over !== wasOver){ wasOver = over; window.dangle.setHit(over); }
+  if (grab) grab = { x: e.clientX, y: e.clientY };
+});
+addEventListener('mousedown', e => {
+  if (overCritter(e.clientX, e.clientY)) grab = { x: e.clientX, y: e.clientY };
+});
+addEventListener('mouseup', () => { grab = null; });
+
+window.dangle.onRecenter(() => { anchor.x = W * 0.84; build(); });
+window.dangle.onCritter(name => { critter = name; });
+
+addEventListener('resize', resize);
+resize();
+anchor.x = W * 0.84;
+build();
+loop();
+</script>
+</body>
+</html>

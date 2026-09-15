@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+
+# Superseded Nimbu Mirchi asset drafts; the app uses nimbu-mirchi-v3.png.
+nimbu-mirchi.png
+nimbu-mirchi-v2.png

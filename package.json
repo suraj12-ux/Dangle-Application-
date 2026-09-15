@@ -1,0 +1,37 @@
+{
+  "name": "dangle",
+  "version": "1.0.0",
+  "description": "A critter that hangs off your menu bar",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.you.dangle",
+    "productName": "Dangle",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.html",
+      "nimbu-mirchi-v3.png"
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "extendInfo": {
+        "LSUIElement": true
+      }
+    }
+  },
+  "allowScripts": {
+    "electron@32.3.3": true
+  }
+}
