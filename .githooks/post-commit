@@ -1,0 +1,3 @@
+#!/bin/sh
+# Keep the configured upstream branch in sync after every successful local commit.
+git push
