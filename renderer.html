@@ -206,7 +206,8 @@ function drawDrishti(_vx, wob){
 }
 function drawBlueEye(_vx, wob){
   // A glossy nazar-style blue-eye charm, with its loop resting on the rope.
-  const cy = 40 + wob * 1.5;
+  // Lift the charm so its gold-rimmed hanging hole joins the rope directly.
+  const cy = 32 + wob * 1.5;
   ctx.shadowColor = 'rgba(22,86,220,.36)'; ctx.shadowBlur = 11;
   const outer = ctx.createRadialGradient(-10, cy - 13, 4, 0, cy, 37);
   outer.addColorStop(0, '#4a8dff'); outer.addColorStop(.42, '#104dc9'); outer.addColorStop(1, '#061d79');
